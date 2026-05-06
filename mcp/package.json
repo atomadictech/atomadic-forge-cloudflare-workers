@@ -1,6 +1,6 @@
 {
   "name": "forge-mcp",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "private": true,
   "description": "Atomadic Forge — MCP Streamable HTTP server on Cloudflare Workers",
   "scripts": {
