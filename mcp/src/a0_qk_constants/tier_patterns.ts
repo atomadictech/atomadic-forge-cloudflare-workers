@@ -12,7 +12,7 @@ export const TIER_ORDER = ["a4", "a3", "a2", "a1", "a0"] as const;
 
 export const PROTOCOL_VERSION = "2025-11-05";
 export const SERVER_NAME = "atomadic-forge";
-export const SERVER_VERSION = "0.16.0";
+export const SERVER_VERSION = "0.16.1";
 
 export const ERR_PARSE           = -32700;
 export const ERR_METHOD_NOT_FOUND = -32601;
