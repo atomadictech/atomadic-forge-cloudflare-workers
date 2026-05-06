@@ -46,4 +46,4 @@ zone_id = "417adb5cfe88a9c62145ba1f62ab5f69"
 # Set GITHUB_TOKEN as a secret (wrangler secret put GITHUB_TOKEN)
 # for higher GitHub API rate limits and private-repo access.
 # The worker functions without it (60 req/hour unauthed).
-FORGE_VERSION = "0.10.0"
+FORGE_VERSION = "0.14.0"
