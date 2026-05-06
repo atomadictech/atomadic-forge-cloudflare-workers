@@ -47,22 +47,25 @@ jobs:
           echo "Resolved worker version: $v"
 
       - name: Sync version into package.json + wrangler.toml + doctor response
-        shell: bash
+        shell: bash {0}     # disable bash strict mode so no-match greps are non-fatal
         run: |
+          set +e
           v="${{ steps.ver.outputs.version }}"
-          npm pkg set version="$v"
+          npm pkg set version="$v" || true
           # wrangler.toml [vars] FORGE_VERSION is what the runtime reads.
-          if grep -q '^FORGE_VERSION' wrangler.toml; then
-            sed -i "s/^FORGE_VERSION = \".*\"/FORGE_VERSION = \"$v\"/" wrangler.toml
-          fi
+          grep -q '^FORGE_VERSION' wrangler.toml \
+            && sed -i "s/^FORGE_VERSION = \".*\"/FORGE_VERSION = \"$v\"/" wrangler.toml
           # The doctor handler hardcodes worker_version — keep it in sync
           # with the release. Best-effort grep + sed; if the literal moves,
           # the next CI run still ships but the doctor string lags by one
           # release until someone updates the regex anchor.
-          if grep -rq 'worker_version' src/ 2>/dev/null; then
-            grep -rl '"worker_version":' src/ | xargs -r sed -i \
+          files=$(grep -rl '"worker_version":' src/ 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            echo "$files" | xargs sed -i \
               "s/\"worker_version\": \"[^\"]*\"/\"worker_version\": \"$v\"/g"
           fi
+          echo "synced version=$v"
+          exit 0
 
       - name: Install
         run: npm ci
