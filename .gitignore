@@ -1,0 +1,25 @@
+# ─── Cloudflare / Wrangler ──────────────────────────────────────────────
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# ─── Node / pnpm ────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+dist/
+*.tsbuildinfo
+
+# ─── Local environment ──────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+VAULT.env
+
+# ─── OS / editor ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.cursor/
+.claude/
+*.swp

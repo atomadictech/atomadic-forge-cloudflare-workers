@@ -1,0 +1,64 @@
+{
+  "schema_version": "atomadic-forge.agent_plan/v1",
+  "generated_at_utc": "2026-05-02T11:16:18Z",
+  "verdict": "FAIL",
+  "goal": "refactor flat src/index.ts into 5-tier monadic structure",
+  "mode": "improve",
+  "project_root": "C:\\!!AtomadicStandard\\atomadic-forge-cloudflare-workers\\mcp",
+  "top_actions": [
+    {
+      "schema_version": "atomadic-forge.agent_action/v1",
+      "id": "docs-your-pkg",
+      "kind": "operational",
+      "title": "Add a README so the documentation axis passes",
+      "why": "forge certify documentation_complete=False blocks any score above 75/100; a one-paragraph README is worth +25.",
+      "risk": "low",
+      "applyable": true,
+      "write_scope": [
+        "README.md"
+      ],
+      "commands": [
+        "forge certify . --package your_pkg"
+      ],
+      "related_fcodes": [
+        "F0050"
+      ],
+      "next_command": "echo '# your_pkg' > README.md",
+      "sample_path": null,
+      "score_delta_estimate": 25
+    },
+    {
+      "schema_version": "atomadic-forge.agent_action/v1",
+      "id": "tests-your-pkg",
+      "kind": "operational",
+      "title": "Add a tests/ directory so the tests axis passes",
+      "why": "forge certify tests_present=False; even one smoke test (import-only) clears the axis and unlocks +25.",
+      "risk": "low",
+      "applyable": false,
+      "write_scope": [
+        "tests/test_smoke.py",
+        "tests/__init__.py"
+      ],
+      "commands": [
+        "forge certify . --package your_pkg",
+        "python -m pytest"
+      ],
+      "related_fcodes": [
+        "F0051"
+      ],
+      "next_command": "mkdir -p tests && printf 'import your_pkg\\n' > tests/test_smoke.py",
+      "sample_path": null,
+      "score_delta_estimate": 25
+    }
+  ],
+  "action_count": 2,
+  "applyable_count": 1,
+  "next_command": "echo '# your_pkg' > README.md",
+  "score": 35.0,
+  "sources": {
+    "wire": "atomadic-forge.wire/v1",
+    "certify": "atomadic-forge.certify/v1"
+  },
+  "id": "2aacf6cb5ccf",
+  "saved_at_utc": "2026-05-02T11:16:18Z"
+}

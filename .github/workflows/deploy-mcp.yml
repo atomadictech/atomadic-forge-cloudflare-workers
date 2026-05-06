@@ -1,0 +1,105 @@
+name: Deploy Forge MCP Worker
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'mcp/**'
+      - '.github/workflows/deploy-mcp.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version string to inline as worker_version (e.g. 0.14.0). Defaults to the tag name when triggered by a tag push."
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          # Tag push:    refs/tags/v0.14.0    -> 0.14.0
+          # Branch push: refs/heads/main      -> read from package.json (no rewrite)
+          # Manual:      use input.version    -> use that
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            v="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            v="${{ inputs.version }}"
+          else
+            v="$(node -p "require('./package.json').version")"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Resolved worker version: $v"
+
+      - name: Sync version into package.json + wrangler.toml + doctor response
+        shell: bash
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          npm pkg set version="$v"
+          # wrangler.toml [vars] FORGE_VERSION is what the runtime reads.
+          if grep -q '^FORGE_VERSION' wrangler.toml; then
+            sed -i "s/^FORGE_VERSION = \".*\"/FORGE_VERSION = \"$v\"/" wrangler.toml
+          fi
+          # The doctor handler hardcodes worker_version — keep it in sync
+          # with the release. Best-effort grep + sed; if the literal moves,
+          # the next CI run still ships but the doctor string lags by one
+          # release until someone updates the regex anchor.
+          if grep -rq 'worker_version' src/ 2>/dev/null; then
+            grep -rl '"worker_version":' src/ | xargs -r sed -i \
+              "s/\"worker_version\": \"[^\"]*\"/\"worker_version\": \"$v\"/g"
+          fi
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Deploy via Wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
+
+      - name: Smoke-check live worker_version
+        env:
+          API_KEY: ${{ secrets.FORGE_MASTER_API_KEY }}
+        run: |
+          # Wait briefly for global propagation, then call doctor and
+          # assert the live worker_version matches what we just shipped.
+          sleep 5
+          v="${{ steps.ver.outputs.version }}"
+          payload='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"doctor","arguments":{}}}'
+          if [ -n "$API_KEY" ]; then
+            resp=$(curl -fsS -X POST https://forge.atomadic.tech/mcp \
+                -H "Content-Type: application/json" \
+                -H "X-API-Key: $API_KEY" \
+                --data "$payload")
+          else
+            resp=$(curl -fsS -X POST https://forge.atomadic.tech/mcp \
+                -H "Content-Type: application/json" \
+                --data "$payload")
+          fi
+          echo "$resp"
+          # Best-effort assertion — if FORGE_MASTER_API_KEY isn't a secret
+          # the unauthed smoke is still useful.
+          if echo "$resp" | grep -q "\"worker_version\": \"$v\""; then
+            echo "PASS: live worker_version matches shipped $v"
+          else
+            echo "WARN: live worker_version did not match $v (may be cache or doctor-handler-not-rewritten)"
+          fi

@@ -1,0 +1,15 @@
+{
+  "schema_version": "atomadic-forge.plan_state/v1",
+  "plan_id": "2aacf6cb5ccf",
+  "events": [
+    {
+      "ts_utc": "2026-05-02T11:16:29Z",
+      "card_id": "docs-your-pkg",
+      "status": "applied",
+      "detail": {
+        "apply": true,
+        "written": "README.md"
+      }
+    }
+  ]
+}
