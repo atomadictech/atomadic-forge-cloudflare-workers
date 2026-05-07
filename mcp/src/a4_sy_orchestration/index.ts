@@ -99,7 +99,39 @@ export default {
         status: "ok", service: "atomadic-forge-mcp", version: SERVER_VERSION,
         mcp_endpoint: `${url.origin}/mcp`, tools: TOOLS.length,
         docs: "https://forge.atomadic.tech",
+        metrics: `${url.origin}/metrics.json`,
       }, { headers: cors() });
+    }
+
+    // v0.49.0 — proxy the canonical forge_metrics.json from the GitHub
+    // raw URL so atomadic.tech / shields.io / any public surface always
+    // sees the live counts the local CLI just regenerated.
+    if (url.pathname === "/metrics.json" || url.pathname === "/forge_metrics.json") {
+      try {
+        const upstream = await fetch(
+          "https://raw.githubusercontent.com/atomadictech/atomadic-forge/main/forge_metrics.json",
+          { cf: { cacheTtl: 300, cacheEverything: true } as RequestInitCfProperties },
+        );
+        if (!upstream.ok) {
+          return Response.json({
+            error: `upstream ${upstream.status}`,
+            schema_version: "atomadic-forge.metrics/v1",
+          }, { status: 502, headers: cors() });
+        }
+        const body = await upstream.text();
+        return new Response(body, {
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "public, max-age=300",
+            ...cors(),
+          },
+        });
+      } catch (err) {
+        return Response.json({
+          error: err instanceof Error ? err.message : String(err),
+          schema_version: "atomadic-forge.metrics/v1",
+        }, { status: 502, headers: cors() });
+      }
     }
 
     return new Response("Not found", { status: 404, headers: cors() });
