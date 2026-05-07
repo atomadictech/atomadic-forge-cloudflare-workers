@@ -1,527 +1,322 @@
-/** Tier a0 — MCP tools catalogue (static schema definitions). v0.10.0 surface. */
+/** Tier a0 — MCP tools catalogue (static schema definitions). v0.47.0 surface.
+ *
+ *  v0.46.0 redesign: 66 individual tools collapsed into 7 action-dispatch tools.
+ *  v0.47.0: `create` exposed as 8th MCP tool (was CLI-only).
+ *
+ *  Each surviving tool uses ``action=`` (or ``op=`` for nexus) as its
+ *  dispatch key. All 66 legacy tool names continue to work via
+ *  LEGACY_ENDPOINT_MAP — the dispatcher rewrites the call before routing.
+ */
 
-/** Total tools in the v0.10.0 consolidated surface. */
-export const DELUXE_TOOLS_TOTAL = 40;
+/** Total tool count in the v0.47.0 surface. */
+export const DELUXE_TOOLS_TOTAL = 8;
 
+/** Legacy endpoint -> new tool name + default action. Mirrors
+ *  src/atomadic_forge/a3_og_features/surface_export.py LEGACY_ENDPOINT_MAP.
+ *  Worker reads this when a legacy name lands on tools/call so old clients
+ *  keep working without migration. */
+export const LEGACY_ENDPOINT_MAP: Record<string, { tool: string; action?: string; op?: string }> = {
+  // explore tool
+  recon:                 { tool: "explore", action: "recon" },
+  explain_repo:          { tool: "explore", action: "explain" },
+  call_graph:            { tool: "explore", action: "call_graph" },
+  smell_scan:            { tool: "explore", action: "smell_scan" },
+  lineage:               { tool: "explore", action: "lineage" },
+  audit_list:            { tool: "explore", action: "lineage" },
+  why_did_this_change:   { tool: "explore", action: "lineage" },
+  what_failed_last_time: { tool: "explore", action: "lineage" },
+  harvest:               { tool: "explore", action: "harvest" },
+  synergy_scan:          { tool: "explore", action: "synergy" },
+  synergy:               { tool: "explore", action: "synergy" },
+  emergent:              { tool: "explore", action: "scan" },
+  emergent_scan:         { tool: "explore", action: "scan" },
+  emergent_swarm:        { tool: "explore", action: "swarm" },
+  recon_swarm:           { tool: "explore", action: "swarm" },
+  discover:              { tool: "explore", action: "scan" },
+  code_intel:            { tool: "explore", action: "call_graph" },
+  // audit tool
+  certify:               { tool: "audit", action: "certify" },
+  wire:                  { tool: "audit", action: "wire" },
+  enforce:               { tool: "audit", action: "enforce" },
+  sidecar_validate:      { tool: "audit", action: "validate" },
+  guard_install:         { tool: "audit", action: "guard" },
+  verify:                { tool: "audit", action: "composite" },
+  worktree_status:       { tool: "audit", action: "health" },
+  exported_api_check:    { tool: "audit", action: "composite" },
+  trust_gate_response:   { tool: "audit", action: "gate" },
+  doctor:                { tool: "audit", action: "health" },
+  preflight:             { tool: "audit", action: "check" },
+  preflight_change:      { tool: "audit", action: "check" },
+  score_patch:           { tool: "audit", action: "score" },
+  select_tests:          { tool: "audit", action: "tests" },
+  cna_check:             { tool: "audit", action: "cna" },
+  rollback_plan:         { tool: "audit", action: "rollback" },
+  manifest_diff:         { tool: "audit", action: "diff" },
+  change_review:         { tool: "audit", action: "diff" },
+  maintain:              { tool: "audit", action: "validate" },
+  // plan tool
+  plan_apply:            { tool: "plan", action: "apply" },
+  auto_plan:             { tool: "plan", action: "generate" },
+  adapt_plan:            { tool: "plan", action: "generate" },
+  auto_step:             { tool: "plan", action: "apply" },
+  auto_apply:            { tool: "plan", action: "apply" },
+  forge_locate:          { tool: "plan", action: "locate" },
+  commit_compose:        { tool: "plan", action: "commit" },
+  forge_util:            { tool: "plan", action: "locate" },
+  iterate:               { tool: "plan", action: "iterate" },
+  iterate_start:         { tool: "plan", action: "iterate" },
+  iterate_continue:      { tool: "plan", action: "resume" },
+  evolve:                { tool: "plan", action: "evolve" },
+  evolve_start:          { tool: "plan", action: "evolve" },
+  loop:                  { tool: "plan", action: "iterate" },
+  transmute:             { tool: "plan", action: "auto" },
+  auto:                  { tool: "plan", action: "auto" },
+  cherry:                { tool: "plan", action: "cherry" },
+  finalize:              { tool: "plan", action: "finalize" },
+  context_pack:          { tool: "plan", action: "context" },
+  workflow:              { tool: "plan", action: "compose" },
+  compose_tools:         { tool: "plan", action: "compose" },
+  load_policy:           { tool: "plan", action: "policy" },
+  recipes:               { tool: "plan", action: "recipes" },
+  list_recipes:          { tool: "plan", action: "recipes" },
+  get_recipe:            { tool: "plan", action: "recipes" },
+  tool_factory:          { tool: "plan", action: "scaffold" },
+  // hive tool
+  hive_agent:            { tool: "hive", action: "register" },
+  hive_consensus:        { tool: "hive", action: "propose" },
+  session:               { tool: "hive", action: "handoff_create" },
+  handoff:               { tool: "hive", action: "handoff_create" },
+  enhancement:           { tool: "hive", action: "enhance_propose" },
+};
+
+/** v0.47.0 — 8 action-dispatch tools mirroring the local Python TOOLS dict. */
 export const TOOLS = [
-  // ── Core analysis (remote / GitHub API) ──────────────────────────────
-
+  // ── welcome ─────────────────────────────────────────────────────────
   {
-    name: "recon",
-    description: "Walk a repo and classify every public symbol into the 5 monadic tiers. Returns tier map, file counts, symbol inventory, and architecture health signals.",
+    name: "welcome",
+    description:
+      "RECOMMENDED FIRST CALL: full onboarding scan in one response — score, " +
+      "violations, narrative, top 3 strengths, top 3 priorities, single best " +
+      "next call, agent_guidance briefing, capability_showcase tour, and " +
+      "safety_net guarantees. Optional since_receipt for diff-style returns.",
     inputSchema: {
       type: "object",
       properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        verbose: { type: "boolean", description: "Include full file listing (default false)" },
+        package: { type: ["string", "null"], description: "Package name (auto-detected if omitted)" },
+        since_receipt: { type: ["string", "null"], description: "Path to prior receipt for since-last-scan diff" },
+        skip_certify: { type: "boolean", description: "Skip pytest run inside certify (default false)" },
       },
-      required: ["repo"],
     },
-  },
-  {
-    name: "certify",
-    description: "0–100 score across documentation, tests, tier layout, and import discipline. Returns verdict (PASS/FAIL) and per-axis breakdown.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        emit_receipt: { type: "boolean", description: "Include a signed forge receipt in the response" },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "enforce",
-    description: "Enforce 5-tier monadic architecture — find violations and optionally suggest fixes.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        apply: { type: "boolean", description: "Return suggested fix instructions" },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "wire",
-    description: "Find every upward-import violation between tiers in a repo.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        suggest_repairs: { type: "boolean", description: "Include suggested repair instructions" },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "context_pack",
-    description: "First-call context bundle for any agent connecting to a repo: tier map, architecture law, blockers, best next action, test commands, release gate, risky files, recent lineage.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        include_symbols: { type: "boolean", description: "Include file listing (default false)" },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "explain_repo",
-    description: "Generate a comprehensive repo explanation including architecture, entry points, and recommendations.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        depth: { type: "string", enum: ["brief", "standard", "deep"], description: "Explanation depth (default: standard)" },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "select_tests",
-    description: "Identify tests affected by a change.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        changed_files: { type: "array", items: { type: "string" }, description: "Source files that changed" },
-      },
-      required: ["repo", "changed_files"],
-    },
-  },
-  {
-    name: "compose_tools",
-    description: "Compose multiple Forge tools in sequence (recon → certify → enforce pipeline).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        tools: { type: "array", items: { type: "string" }, description: "Tool names to compose in order" },
-      },
-      required: ["repo", "tools"],
-    },
-  },
-  {
-    name: "load_policy",
-    description: "Load the enforcement policy for a repo.",
-    inputSchema: {
-      type: "object",
-      properties: { repo: { type: "string", description: "GitHub repo URL or owner/repo" } },
-      required: ["repo"],
-    },
+    recommended_first_call: true,
   },
 
-  // ── Pure analysis (no repo required) ──────────────────────────────────
-
+  // ── explore ─────────────────────────────────────────────────────────
   {
-    name: "score_patch",
-    description: "0–100 architecture-quality risk score for a unified diff — per-dimension breakdown flags tier violations, scope creep, and missing tests.",
+    name: "explore",
+    description:
+      "Codebase analysis & discovery. action='recon' walks tier map; " +
+      "'explain' returns plain-English orientation; 'call_graph' AST walk " +
+      "for a symbol; 'smell_scan' CC/LOC/dup detectors; 'lineage' queries " +
+      "the audit log; 'harvest' cross-repo graft candidates; 'synergy' " +
+      "feature-pair detection; 'scan'/'swarm' emergent composition discovery.",
     inputSchema: {
       type: "object",
       properties: {
-        diff: { type: "string", description: "git diff output to score" },
-        context: { type: "string", description: "Optional: repo context or project description" },
-      },
-      required: ["diff"],
-    },
-  },
-  {
-    name: "preflight_change",
-    description: "Validate proposed files don't break tier discipline BEFORE you write code — checks intent, tier assignment, and scope threshold.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        intent: { type: "string", description: "What the change is intended to do" },
-        proposed_files: { type: "array", items: { type: "string" }, description: "Files that will be modified" },
-        scope_threshold: { type: "number", description: "Max files before scope warning (default 8)" },
-      },
-      required: ["intent", "proposed_files"],
-    },
-  },
-  {
-    name: "trust_gate_response",
-    description: "Validate agent output before applying — catches hallucinated paths, fabricated test results, and self-approval patterns.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        response: { type: "string", description: "Agent response text to validate" },
-        intent: { type: "string", description: "Original intent the response was meant to fulfill" },
-        strict: { type: "boolean", description: "Fail on warnings as well as errors (default false)" },
-      },
-      required: ["response"],
-    },
-  },
-  {
-    name: "manifest_diff",
-    description: "Schema-aware diff between two Forge manifests. Reports added/removed/moved symbols, tier deltas, score deltas. Inline-dict mode works remotely.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        left: { type: "object" },
-        left_path: { type: "string" },
-        right: { type: "object" },
-        right_path: { type: "string" },
+        action: {
+          type: "string",
+          enum: ["recon", "explain", "call_graph", "smell_scan", "lineage",
+                  "harvest", "synergy", "scan", "swarm"],
+          default: "recon",
+        },
+        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
+        repos: { type: "array", items: { type: "string" }, description: "Multi-repo list for swarm actions" },
+        symbol: { type: "string", description: "Qualname for call_graph" },
+        verbose: { type: "boolean" },
+        top_n: { type: "integer", minimum: 1, maximum: 50, default: 10 },
       },
     },
   },
 
-  // ── Merged verbs (v0.10.0 consolidation) ──────────────────────────────
+  // ── audit ───────────────────────────────────────────────────────────
+  {
+    name: "audit",
+    description:
+      "Quality gates & change safety. action='certify' 0-100 score; " +
+      "'wire' upward-import violations; 'enforce' apply mechanical fixes; " +
+      "'validate'/'guard' sidecar+enforcement layers; 'composite'/'gate'/" +
+      "'health' verify variants; 'check'/'score'/'tests'/'cna'/'rollback'/" +
+      "'diff' preflight + change-review variants.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["certify", "wire", "enforce", "validate", "guard",
+                  "composite", "gate", "health", "check", "score", "tests",
+                  "cna", "rollback", "diff"],
+          default: "certify",
+        },
+        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
+        diff: { type: "string", description: "Unified diff for action=score" },
+        response: { type: "string", description: "LLM response text for action=gate" },
+        intent: { type: "string", description: "Edit intent for action=check" },
+        proposed_files: { type: "array", items: { type: "string" } },
+        scope_threshold: { type: "number", default: 8 },
+        emit_receipt: { type: "boolean" },
+        strict: { type: "boolean" },
+      },
+    },
+  },
 
+  // ── plan ────────────────────────────────────────────────────────────
   {
     name: "plan",
-    description: "Generate a ranked refactor plan for a repo; pass a `plan` dict to filter cards against agent capabilities (adapt mode). Merges former auto_plan + adapt_plan.",
+    description:
+      "Orient + plan + execute. action='context'/'compose'/'policy'/'recipes' " +
+      "for first-call orientation + workflow recipes; 'generate'/'apply'/" +
+      "'locate'/'commit' for refactor planning + dev utilities; " +
+      "'iterate'/'resume'/'evolve'/'evolve_step' for LLM loops; " +
+      "'auto'/'cherry'/'finalize' for the transmuter pipeline; " +
+      "'scaffold' for tool factory.",
     inputSchema: {
       type: "object",
       properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo (required for fresh plan)" },
-        goal: { type: "string", description: "Refactor goal (default: 'improve repo conformance')" },
-        top_n: { type: "number", description: "Max plan cards to return (default 7)" },
-        plan: { type: "object", description: "Existing agent_plan/v1 to adapt (triggers adapt mode)" },
-        agent_capabilities: { type: "array", items: { type: "string" }, description: "Capability tokens for adapt mode (e.g. edit_files, run_commands, delegate)" },
-      },
-    },
-  },
-  {
-    name: "plan_apply",
-    description: "Execute a saved plan — pass card_id for a single card, omit for all applyable cards in sequence. File-system mutations require local CLI.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        plan_id: { type: "string", description: "Plan ID from a saved plan" },
-        card_id: { type: "string", description: "Single card to apply (omit for all cards)" },
-        apply: { type: "boolean", description: "Dry-run by default (false); true executes the change" },
-      },
-    },
-  },
-  {
-    name: "lineage",
-    description: "Query the .atomadic-forge lineage log — all events (no args), blame a file (file=), or show recent failures for an area (area=). Mode is auto-detected from args.",
-    inputSchema: {
-      type: "object",
-      properties: {
+        action: {
+          type: "string",
+          enum: ["context", "compose", "policy", "recipes",
+                  "generate", "apply", "locate", "commit",
+                  "iterate", "resume", "evolve", "evolve_step",
+                  "auto", "cherry", "finalize", "scaffold"],
+          default: "context",
+        },
+        intent: { type: "string", description: "Goal/intent for compose, generate, iterate" },
+        plan_id: { type: "string", description: "Saved plan ID for action=apply" },
+        name: { type: "string", description: "Recipe/tool name for recipes/scaffold" },
         repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        file: { type: "string", description: "File path to blame (triggers by_file mode)" },
-        area: { type: "string", description: "Area/module to check failures for (triggers failed_for_area mode)" },
-        mode: { type: "string", enum: ["all", "by_file", "failed_for_area"], description: "Explicit mode override" },
-        limit: { type: "number", description: "Number of recent runs to inspect (default 5, max 10)" },
-        branch: { type: "string", description: "Branch to check (default: default branch)" },
-      },
-    },
-  },
-  {
-    name: "recipes",
-    description: "Forge's named golden-path recipes — call with no `name` for the full catalogue, with `name` for the step-by-step body of that recipe.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Recipe name (omit to list all available recipes)" },
-      },
-    },
-  },
-  {
-    name: "verify",
-    description: "Verify the public API surface or repo conformance. Merges former exported_api_check. Pass check_exports=true to compare public API surface between two refs.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        check_exports: { type: "boolean", description: "Compare exported API surface (formerly exported_api_check)" },
-        base: { type: "string", description: "Base ref (default: main)" },
-        head: { type: "string", description: "Head ref (default: HEAD)" },
-        source: { type: "string", description: "Source path for local verify" },
-        path: { type: "string", description: "Path for local verify" },
       },
     },
   },
 
-  // ── Operational / diagnostic ───────────────────────────────────────────
-
+  // ── hive ────────────────────────────────────────────────────────────
   {
-    name: "doctor",
-    description: "Environment diagnostic — reports Forge worker version + remote-vs-local capability split. Pass include_worktree=true for git orientation (formerly worktree_status).",
+    name: "hive",
+    description:
+      "Multi-agent coordination. action='register'/'list'/'deactivate'/" +
+      "'observe' for agent lifecycle; 'propose'/'vote'/'needs_vote'/'result'/" +
+      "'recap' for consensus; 'handoff_create'/'handoff_list'/" +
+      "'enhance_propose'/'enhance_list' for session state.",
     inputSchema: {
       type: "object",
       properties: {
-        include_worktree: { type: "boolean", description: "Include git worktree status (local-only; worker returns redirect)" },
-        project_root: { type: "string" },
-        max_files: { type: "integer" },
+        action: {
+          type: "string",
+          enum: ["register", "list", "deactivate", "observe",
+                  "propose", "vote", "needs_vote", "result", "recap",
+                  "handoff_create", "handoff_list",
+                  "enhance_propose", "enhance_list"],
+          default: "list",
+        },
+        agent_name: { type: "string" },
+        proposal_id: { type: "string" },
+        vote: { type: "string", enum: ["yes", "no", "abstain"] },
       },
-    },
-  },
-  {
-    name: "rollback_plan",
-    description: "Structured undo plan: files to remove, caches to clean, docs to restore, tests to rerun. Requires local git access — worker returns a redirect to the local CLI.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        changed_files: { type: "array", items: { type: "string" } },
-        project_root: { type: "string" },
-      },
-      required: ["changed_files"],
-    },
-  },
-  {
-    name: "sidecar_validate",
-    description: "Cross-check a .forge sidecar against its source AST (S0000–S0007 finding classes). Local-only — worker returns a redirect.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        source_file: { type: "string", description: "Path to the source file." },
-      },
-      required: ["source_file"],
     },
   },
 
-  // ── Discovery / composition ────────────────────────────────────────────
-
+  // ── wisdom ──────────────────────────────────────────────────────────
   {
-    name: "emergent_scan",
-    description: "Find latent a3 features by detecting input/output alignment of existing functions — surfaces compositions you can ship without writing new logic.",
+    name: "wisdom",
+    description:
+      "Institutional memory DB. action='record' append a lesson; " +
+      "'query' relevance-rank by scope/tags/text; 'list' paginated dump; " +
+      "'recall' top-N repo-scoped entries (cheapest read); 'promote' " +
+      "cluster corroborated wisdom into draft recipes.",
     inputSchema: {
       type: "object",
       properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        top_n: { type: "integer", default: 25 },
+        action: {
+          type: "string",
+          enum: ["record", "query", "list", "recall", "promote"],
+          default: "recall",
+        },
+        insight: { type: "string" },
+        scope: { type: "string", enum: ["repo", "forge", "general"], default: "repo" },
+        tags: { type: "array", items: { type: "string" } },
+        evidence: { type: "string" },
+        confidence: { type: "number", minimum: 0, maximum: 1 },
+        text: { type: "string", description: "Free-text query" },
+        top_n: { type: "integer", minimum: 1, maximum: 50, default: 5 },
+        limit: { type: "integer", default: 20 },
+        include_bodies: { type: "boolean", default: false },
+        include_superseded: { type: "boolean", default: false },
       },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "emergent_swarm",
-    description: "Surface compositions that only become visible across multiple repos — cross-domain emergent scan merged into a unified ranking.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repos: { type: "array", items: { type: "string" }, description: "List of GitHub repo URLs or owner/repo" },
-        top_n: { type: "integer", default: 25 },
-      },
-      required: ["repos"],
-    },
-  },
-  {
-    name: "synergy_scan",
-    description: "Find CLI verbs or features that share an artifact but lack an adapter — eight signals: json_artifact, in_memory_pipe, shared_schema, shared_vocabulary, phase_omission, feedback_loop, type_pipeline, data_flow_gap.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        package: { type: "string", default: "atomadic_forge" },
-        top_n: { type: "integer", default: 25 },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "recon_swarm",
-    description: "Unified scout report across N repos for portfolio-scale composition — tier-distribution summary, certify scores, and cross-repo violation ranking in one call.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repos: { type: "array", items: { type: "string" }, description: "GitHub repo URLs or owner/repo" },
-        verbose: { type: "boolean" },
-      },
-      required: ["repos"],
-    },
-  },
-  {
-    name: "smell_scan",
-    description: "Detect code smells and anti-patterns across a repo's tier layout: God modules, implicit a2 composites, missing docstrings, oversized files.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        top_n: { type: "integer", default: 20 },
-      },
-      required: ["repo"],
     },
   },
 
-  // ── Absorb pipeline (auto / cherry / finalize) ─────────────────────────
-
+  // ── nexus ───────────────────────────────────────────────────────────
   {
-    name: "auto",
-    description: "Flagship single-shot transmuter: scout → cherry → assimilate → wire → certify in one call. Pass a GitHub repo; get back a tier-organized, certify-scored package.",
+    name: "nexus",
+    description:
+      "AAAA-Nexus auth primitives (uses op= NOT action=). " +
+      "op='identity_verify' | 'federation_mint' | 'authorize_action' | " +
+      "'sys_trust_gate' | 'contract_verify' | 'lineage_record' | " +
+      "'ratchet_register'. Requires ATOMADIC_MASTER_KEY or " +
+      "ATOMADIC_SUBSCRIPTION_KEY env. The 'authorize_action' op uses " +
+      "a separate 'action' field (the action being authorized) — " +
+      "distinct from this tool's op= dispatch key.",
     inputSchema: {
       type: "object",
       properties: {
-        repo: { type: "string", description: "Source GitHub repo URL or owner/repo" },
-        output: { type: "string", description: "Output package path (local CLI only)" },
-        package: { type: "string", description: "Output package name" },
-        apply: { type: "boolean", description: "Materialize output (local CLI only)" },
+        op: {
+          type: "string",
+          enum: ["identity_verify", "federation_mint", "authorize_action",
+                  "sys_trust_gate", "contract_verify", "lineage_record",
+                  "ratchet_register"],
+        },
+        identity: { type: "string" },
+        did: { type: "string" },
+        scope: { type: "string" },
+        ttl_secs: { type: "integer" },
+        action: { type: "string", description: "authorize_action: the Nexus action being authorized" },
+        subject: { type: "string" },
+        resource: { type: "string" },
+        claim: { type: "string" },
+        manifest_hash: { type: "string" },
+        intent: { type: "string" },
+        payload: { type: "object" },
+        ratchet_id: { type: "string" },
+        stamp: { type: "string" },
       },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "cherry",
-    description: "Cherry-pick manifest of symbols from a scouted repo — surgical pre-step before finalize, for precise control over what gets absorbed.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo to cherry-pick from" },
-        filter: { type: "string", description: "Symbol filter expression" },
-        top_n: { type: "integer", default: 50 },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "harvest",
-    description: "Find capabilities your target repo lacks but sibling repos already have — τ_trust-gated cross-repo capability gap detection.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        top_n: { type: "integer", default: 30 },
-      },
-      required: ["repo"],
-    },
-  },
-  {
-    name: "finalize",
-    description: "Materialize a cherry-pick manifest into a tier-organized output package, then wire and certify. Requires local filesystem — worker returns a redirect.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        manifest_path: { type: "string", description: "Path to cherry manifest JSON" },
-        output: { type: "string", description: "Output package path" },
-        package: { type: "string", description: "Output package name" },
-      },
-      required: ["manifest_path"],
+      required: ["op"],
     },
   },
 
-  // ── Iterate / evolve (agent-driven LLM loop) ───────────────────────────
-
+  // ── create ──────────────────────────────────────────────────────────
   {
-    name: "iterate_start",
-    description: "Open an architecture loop where the calling agent IS the LLM — Forge drives prompts toward certify >= target_score, you execute and report back. Requires local Python env.",
+    name: "create",
+    description:
+      "Intent + seed repos -> shippable pip-installable package. " +
+      "Runs the full Phase 1 pipeline: emergent_swarm cross-repo composition " +
+      "discovery -> materialize top-N candidates into tier-organized package " +
+      "-> optional certify. Returns the create receipt with scan_summary, " +
+      "materialize report, and scan_report_path. (Local-only — requires " +
+      "filesystem access; install atomadic-forge locally to run.)",
     inputSchema: {
       type: "object",
       properties: {
-        intent: { type: "string", description: "Goal for the iterate loop" },
-        target_score: { type: "number", description: "Target certify score (default 75)" },
-        project_root: { type: "string" },
+        intent: { type: "string", description: "One-line description of the package" },
+        seed_repos: { type: "array", items: { type: "string" }, description: "Paths to repos to scan" },
+        out_dir: { type: "string", description: "Where to write the new package" },
+        package: { type: "string", description: "Importable name (Python identifier)" },
+        top_n: { type: "integer", default: 5, minimum: 1, maximum: 50 },
+        run_certify: { type: "boolean", default: true },
+        swarm_max_depth: { type: "integer", default: 3, minimum: 1, maximum: 23 },
+        require_pure: { type: "boolean", default: false },
+        domain_jump_required: { type: "boolean", default: true },
+        cross_repo_bonus: { type: "number", default: 15.0 },
+        corroborate_with_call_graph: { type: "boolean", default: true },
       },
-      required: ["intent"],
-    },
-  },
-  {
-    name: "iterate_continue",
-    description: "Feed your last execution result into an open iterate session; get the next architecture prompt. Requires local Python env.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        loop_id: { type: "string", description: "Loop ID from iterate_start" },
-        last_result: { type: "object", description: "Result of the last action card applied" },
-        project_root: { type: "string" },
-      },
-      required: ["loop_id"],
-    },
-  },
-  {
-    name: "evolve_start",
-    description: "Recursive iterate — each round's output becomes the seed for the next. Open a recursive self-improvement session toward a target certify score. Requires local Python env.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        intent: { type: "string", description: "High-level goal for the evolved package" },
-        package: { type: "string", default: "evolved" },
-        project_root: { type: "string" },
-        target_score: { type: "number", default: 75 },
-        rounds: { type: "number", default: 3 },
-      },
-      required: ["intent"],
-    },
-  },
-  {
-    name: "evolve_step",
-    description: "Execute one round of an in-progress evolve cycle. Pass the evolution_id from evolve_start. Returns the round log and updated score.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        evolution_id: { type: "string", description: "Evolution ID from evolve_start" },
-        project_root: { type: "string" },
-      },
-      required: ["evolution_id"],
-    },
-  },
-
-  // ── Code intelligence ──────────────────────────────────────────────────
-
-  {
-    name: "call_graph",
-    description: "Build a function-level call graph for a repo. Returns caller→callee edges, cycle detection, and entry-point ranking. Requires local AST access — worker returns a redirect.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo (for remote file listing)" },
-        project_root: { type: "string" },
-        package: { type: "string" },
-      },
-    },
-  },
-  {
-    name: "cna_check",
-    description: "Compose-Not-Add gate — blocks duplicating a symbol Forge already owns at the correct tier. Prevents accidental reimplementation of existing capabilities.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_root: { type: "string" },
-        package: { type: "string" },
-      },
-    },
-  },
-  {
-    name: "commit_compose",
-    description: "Compose a conventional-commit message from staged changes, certify-score delta, and wire findings. Returns a draft commit message with co-authorship block.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        diff: { type: "string", description: "git diff --staged output" },
-        score_before: { type: "number" },
-        score_after: { type: "number" },
-        context: { type: "string" },
-      },
-      required: ["diff"],
-    },
-  },
-  {
-    name: "forge_locate",
-    description: "Locate a symbol, file, or pattern in a repo's tier map. Returns exact tier, path, and related symbols. Combines recon + symbol search.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        repo: { type: "string", description: "GitHub repo URL or owner/repo" },
-        query: { type: "string", description: "Symbol name, file glob, or keyword" },
-      },
-      required: ["query"],
-    },
-  },
-  {
-    name: "tool_factory",
-    description: "Generate a new MCP tool stub conforming to the 5-tier monadic layout: a0 types, a1 pure logic, a2 handler, a4 registration. Requires local filesystem — worker returns a redirect.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Tool name (snake_case)" },
-        description: { type: "string", description: "Tool description" },
-        project_root: { type: "string" },
-      },
-      required: ["name", "description"],
-    },
-  },
-  {
-    name: "guard_install",
-    description: "Install a forge pre-commit hook and optional GitHub Action that blocks commits/PRs on wire violations or certify regressions. Requires local filesystem — worker returns a redirect.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        project_root: { type: "string" },
-        min_score: { type: "number", description: "Minimum certify score to allow (default 75)" },
-        action: { type: "boolean", description: "Also install GitHub Action (default false)" },
-      },
+      required: ["intent", "seed_repos", "out_dir", "package"],
     },
   },
 ] as const;

@@ -1,7 +1,7 @@
 /** Tier a3 — feature: MCP JSON-RPC request handler. */
 
 import { Env, JsonValue, McpRequest, McpResponse } from "../a0_qk_constants/types.ts";
-import { TOOLS, DELUXE_TOOLS_TOTAL } from "../a0_qk_constants/tools_catalog.ts";
+import { TOOLS, DELUXE_TOOLS_TOTAL, LEGACY_ENDPOINT_MAP } from "../a0_qk_constants/tools_catalog.ts";
 import { JSONRPC, PROTOCOL_VERSION, SERVER_NAME, SERVER_VERSION, ERR_METHOD_NOT_FOUND, ERR_INVALID_PARAMS, ERR_INTERNAL } from "../a0_qk_constants/tier_patterns.ts";
 import { dispatchTool } from "./tool_dispatcher.ts";
 
@@ -42,7 +42,10 @@ export async function handleMcpRequest(req: McpRequest, env: Env, apiKey: string
         if (!toolName) {
           return { jsonrpc: JSONRPC, id, error: { code: ERR_INVALID_PARAMS, message: "name is required" } };
         }
-        if (!TOOLS.some(t => t.name === toolName)) {
+        // v0.47.0: accept new tool names AND legacy names that the
+        // dispatcher will redirect via LEGACY_ENDPOINT_MAP.
+        const isKnown = TOOLS.some(t => t.name === toolName) || (toolName in LEGACY_ENDPOINT_MAP);
+        if (!isKnown) {
           return { jsonrpc: JSONRPC, id, error: { code: ERR_METHOD_NOT_FOUND, message: `Tool '${toolName}' not found` } };
         }
         const result = await dispatchTool(toolName, args, env);

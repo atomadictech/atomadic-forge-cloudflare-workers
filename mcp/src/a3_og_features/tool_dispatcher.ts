@@ -1,13 +1,93 @@
-/** Tier a3 — feature: routes tool calls to their implementations. v0.10.0 surface. */
+/** Tier a3 — feature: routes tool calls to their implementations.
+ *  v0.47.0 surface — 8 action-dispatch tools + legacy-name redirects.
+ */
 
 import { Env, JsonValue } from "../a0_qk_constants/types.ts";
 import { RECIPES } from "../a0_qk_constants/recipes.ts";
+import { LEGACY_ENDPOINT_MAP } from "../a0_qk_constants/tools_catalog.ts";
 import { parseRepo } from "../a1_at_functions/repo_parser.ts";
 import { analyzeFiles, certifyRepo } from "../a1_at_functions/certify_repo.ts";
 import { scorePatch } from "../a1_at_functions/score_patch.ts";
 import { trustGateResponse } from "../a1_at_functions/trust_gate.ts";
 import { preflightChange } from "../a1_at_functions/preflight.ts";
 import { GitHubClient } from "../a2_mo_composites/github_client.ts";
+
+/** v0.47.0 — Action-dispatch routing tables.
+ *  Maps each new tool's `action` (or `op` for nexus) to a legacy tool name
+ *  that has an existing edge handler below. Allows the new 8-tool surface
+ *  to reuse the 600+ lines of GitHub-API-backed logic without duplication.
+ */
+const ACTION_TO_LEGACY: Record<string, Record<string, string>> = {
+  explore: {
+    recon: "recon", explain: "explain_repo", call_graph: "call_graph",
+    smell_scan: "smell_scan", lineage: "lineage", harvest: "harvest",
+    synergy: "synergy_scan", scan: "emergent_scan", swarm: "emergent_swarm",
+  },
+  audit: {
+    certify: "certify", wire: "wire", enforce: "enforce",
+    validate: "sidecar_validate", guard: "guard_install",
+    composite: "verify", gate: "trust_gate_response", health: "doctor",
+    check: "preflight_change", score: "score_patch", tests: "select_tests",
+    cna: "cna_check", rollback: "rollback_plan", diff: "manifest_diff",
+  },
+  plan: {
+    context: "context_pack", compose: "compose_tools", policy: "load_policy",
+    recipes: "recipes", generate: "plan", apply: "plan_apply",
+    locate: "forge_locate", commit: "commit_compose",
+    iterate: "iterate_start", resume: "iterate_continue",
+    evolve: "evolve_start", evolve_step: "evolve_step",
+    auto: "auto", cherry: "cherry", finalize: "finalize",
+    scaffold: "tool_factory",
+  },
+  hive: {
+    register: "hive_agent", list: "hive_agent", deactivate: "hive_agent",
+    observe: "hive_agent", propose: "hive_consensus", vote: "hive_consensus",
+    needs_vote: "hive_consensus", result: "hive_consensus", recap: "hive_consensus",
+    handoff_create: "handoff", handoff_list: "handoff",
+    enhance_propose: "enhancement", enhance_list: "enhancement",
+  },
+  wisdom: {
+    record: "wisdom_record", query: "wisdom_query", list: "wisdom_list",
+    recall: "wisdom_recall", promote: "wisdom_promote",
+  },
+};
+
+/** Resolve any legacy tool name OR action-dispatched name into the canonical
+ *  legacy handler key + final args. Returns null if name is unknown. */
+function resolveDispatch(
+  name: string,
+  args: Record<string, JsonValue>,
+): { canonical: string; args: Record<string, JsonValue> } | null {
+  // Path 1: it's already a legacy handler name → use as-is.
+  // (Detected by checking if it's NOT one of the 8 new tools.)
+  const NEW_TOOLS = new Set(["welcome", "explore", "audit", "plan", "hive", "wisdom", "nexus", "create"]);
+  if (!NEW_TOOLS.has(name)) {
+    // Either a true legacy name (recon, certify, ...) or unknown.
+    // If LEGACY_ENDPOINT_MAP has it, resolve transitively.
+    const mapped = LEGACY_ENDPOINT_MAP[name];
+    if (mapped) {
+      // Legacy name → new tool + action; fold action into args, recurse.
+      const newArgs = { ...args };
+      if (mapped.action !== undefined) newArgs.action = mapped.action;
+      if (mapped.op !== undefined) newArgs.op = mapped.op;
+      return resolveDispatch(mapped.tool, newArgs);
+    }
+    // Direct legacy name with its own handler below — pass through.
+    return { canonical: name, args };
+  }
+  // Path 2: it's a new action-dispatch tool. Map (tool, action) → legacy.
+  if (name === "welcome" || name === "create" || name === "nexus") {
+    // welcome/create/nexus have no action enum — handled directly below.
+    return { canonical: name, args };
+  }
+  const action = String(args.action ?? "");
+  const lookup = ACTION_TO_LEGACY[name];
+  if (lookup && action && lookup[action]) {
+    return { canonical: lookup[action], args };
+  }
+  // Fall through: invoke the new tool's case directly (will return defaults).
+  return { canonical: name, args };
+}
 
 /** Local-only redirect response for tools that require filesystem/git/Python. */
 function localOnlyRedirect(toolName: string): JsonValue {
@@ -24,6 +104,15 @@ export async function dispatchTool(
   args: Record<string, JsonValue>,
   env: Env,
 ): Promise<JsonValue> {
+  // v0.47.0 — resolve legacy names + action-dispatched names to the
+  // canonical handler key. Unknown names fall through to the default.
+  const resolved = resolveDispatch(name, args);
+  if (!resolved) {
+    throw { code: -32601, message: `Unknown tool: ${name}` };
+  }
+  name = resolved.canonical;
+  args = resolved.args;
+
   const gh = new GitHubClient(env);
 
   /** Resolve and validate a repo arg, returning parsed owner/name. */
@@ -31,6 +120,25 @@ export async function dispatchTool(
     const parsed = parseRepo(String(args.repo ?? ""));
     if (!parsed) throw new Error("Invalid repo: use 'owner/repo' or a GitHub URL");
     return parsed;
+  }
+
+  // ── v0.47.0 new tools that have no legacy handler ────────────────────
+
+  if (name === "create") {
+    return localOnlyRedirect("create");
+  }
+  if (name === "nexus") {
+    return localOnlyRedirect("nexus");
+  }
+  // explore/audit/plan/hive/wisdom with no resolved action:
+  // the resolver mapped the action; if name is still one of these,
+  // it means action was missing or unknown. Return localOnly with hint.
+  if (["explore", "audit", "plan", "hive", "wisdom"].includes(name)) {
+    return {
+      schema_version: `atomadic-forge.${name}/v1`,
+      error: `${name} requires an 'action' parameter`,
+      hint: `See tools/list for the action enum on '${name}'.`,
+    } as unknown as JsonValue;
   }
 
   switch (name) {
@@ -455,6 +563,8 @@ export async function dispatchTool(
           "emergent_scan", "emergent_swarm", "synergy_scan",
           "recon_swarm", "auto (pre-scan)", "cherry (manifest)", "harvest",
           "forge_locate", "smell_scan", "commit_compose",
+          "welcome (remote situation report)",
+          "nexus_* (7 Nexus primitives, when keys configured)",
         ],
         capabilities_local_only: [
           "plan_apply", "finalize", "rollback_plan",
@@ -462,6 +572,11 @@ export async function dispatchTool(
           "call_graph", "cna_check", "tool_factory", "guard_install",
           "iterate_start", "iterate_continue", "evolve_start", "evolve_step",
           "emergent_scan / synergy_scan (full AST pipeline)",
+          "wisdom_record", "wisdom_query", "wisdom_list", "wisdom_recall", "wisdom_promote",
+          "hive_register", "hive_list", "hive_deactivate", "hive_observe",
+          "hive_propose", "hive_vote", "hive_result", "hive_recap", "hive_needs_vote",
+          "handoff_create", "handoff_list",
+          "enhancement_propose", "enhancement_list",
         ],
         instructions: "For local-only tools and full features, install the CLI: `pip install atomadic-forge && forge mcp serve`",
         docs: "https://forge.atomadic.tech",
@@ -522,6 +637,124 @@ export async function dispatchTool(
     case "evolve_start":
     case "evolve_step":
       return localOnlyRedirect(name);
+
+    // ── v0.13.x Wisdom DB (local-only: reads .atomadic-forge/wisdom.jsonl) ──
+
+    case "wisdom_record":
+    case "wisdom_query":
+    case "wisdom_list":
+    case "wisdom_recall":
+    case "wisdom_promote":
+      return localOnlyRedirect(name);
+
+    // ── v0.13.x Hive Sync (local-only: reads .atomadic-forge/hive/) ─────
+
+    case "hive_register":
+    case "hive_list":
+    case "hive_deactivate":
+    case "hive_observe":
+    case "hive_propose":
+    case "hive_vote":
+    case "hive_result":
+    case "hive_recap":
+    case "hive_needs_vote":
+      return localOnlyRedirect(name);
+
+    // ── v0.14.0a7 AAAA-Nexus LIVE Primitives ────────────────────────────
+    // These proxy to the deployed Nexus service when keys are configured;
+    // otherwise return a redirect to the local CLI.
+
+    case "nexus_identity_verify":
+    case "nexus_federation_mint":
+    case "nexus_authorize_action":
+    case "nexus_sys_trust_gate":
+    case "nexus_contract_verify":
+    case "nexus_lineage_record":
+    case "nexus_ratchet_register": {
+      const nexusKey = env.ATOMADIC_MASTER_KEY || env.ATOMADIC_SUBSCRIPTION_KEY || "";
+      if (!nexusKey) {
+        return {
+          schema_version: `atomadic-forge.${name}/v1`,
+          note: `${name} requires ATOMADIC_MASTER_KEY or ATOMADIC_SUBSCRIPTION_KEY in env.`,
+          instructions: "Configure Nexus keys or use the local CLI: pip install atomadic-forge && forge mcp serve",
+        } as unknown as JsonValue;
+      }
+      // Strip the nexus_ prefix to get the Nexus primitive name.
+      const primitive = name.replace("nexus_", "");
+      const nexusOrigin = env.NEXUS_ORIGIN || "https://atomadic-cognition.atomadictech.workers.dev";
+      try {
+        const resp = await fetch(`${nexusOrigin}/nexus/${primitive}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-API-Key": nexusKey },
+          body: JSON.stringify(args),
+        });
+        const data = await resp.json().catch(() => null);
+        return { schema_version: `atomadic-forge.${name}/v1`, ...(data ?? { error: `HTTP ${resp.status}` }) } as unknown as JsonValue;
+      } catch (err) {
+        return { schema_version: `atomadic-forge.${name}/v1`, error: String(err) } as unknown as JsonValue;
+      }
+    }
+
+    // ── v0.14.0a9 Handoff (local-only: writes .atomadic-forge/handoffs/) ─
+
+    case "handoff_create":
+    case "handoff_list":
+      return localOnlyRedirect(name);
+
+    // ── v0.14.0a11 Enhancement Proposals (local-only) ────────────────────
+
+    case "enhancement_propose":
+    case "enhancement_list":
+      return localOnlyRedirect(name);
+
+    // ── v0.14.0a12 Welcome ───────────────────────────────────────────────
+
+    case "welcome": {
+      // Remote welcome: run recon + certify and compose a situational report.
+      if (!args.repo) {
+        return {
+          schema_version: "atomadic-forge.welcome/v1",
+          note: "Remote welcome requires a repo arg. For local welcome, use `pip install atomadic-forge && forge mcp serve`.",
+          instructions: "Pass repo='owner/repo' for a remote situation report.",
+        } as unknown as JsonValue;
+      }
+      const { owner, name: repoName } = repo();
+      const files = await gh.getRepoFiles(owner, repoName);
+      const recon = analyzeFiles(owner, repoName, files);
+      const cert = certifyRepo(recon);
+      const strengths: string[] = [];
+      if (cert.score >= 75) strengths.push("Certify score above threshold");
+      if (recon.tier_coverage > 60) strengths.push("Strong 5-tier coverage");
+      if (recon.test_file_count > 5) strengths.push("Active test suite");
+      return {
+        schema_version: "atomadic-forge.welcome/v1",
+        repo: `${owner}/${repoName}`,
+        certify_score: cert.score,
+        certify_verdict: cert.verdict,
+        total_files: recon.total_files,
+        python_files: recon.python_files,
+        test_files: recon.test_file_count,
+        tier_coverage_pct: recon.tier_coverage,
+        tier_map: recon.tier_map,
+        top_strengths: strengths.slice(0, 3),
+        top_priorities: cert.recommendations.slice(0, 3),
+        next_call: cert.score < 75 ? "plan" : "verify",
+        capability_showcase: {
+          "Architecture Analysis": ["recon", "certify", "enforce", "wire"],
+          "Refactor Planning": ["plan", "plan_apply", "auto", "cherry"],
+          "Code Intelligence": ["call_graph", "smell_scan", "forge_locate", "cna_check"],
+          "Cross-Repo": ["recon_swarm", "emergent_swarm", "harvest"],
+          "Wisdom & Hive": ["wisdom_record", "wisdom_query", "hive_propose", "hive_vote"],
+          "Trust & Safety": ["trust_gate_response", "verify", "guard_install"],
+        },
+        safety_net: {
+          trust_gate: "Every agent output can be validated via trust_gate_response before apply.",
+          lineage: "All actions recorded to .atomadic-forge/lineage.jsonl.",
+          rollback: "rollback_plan generates structured undo for any change.",
+        },
+        note: "Full welcome with narrative, agent_guidance, and since-receipt diff requires the local CLI.",
+      } as unknown as JsonValue;
+    }
 
     default:
       throw { code: -32601, message: `Unknown tool: ${name}` };
