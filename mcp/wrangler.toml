@@ -53,8 +53,15 @@ zone_id = "417adb5cfe88a9c62145ba1f62ab5f69"
 pattern = "forge.atomadic.tech/forge_metrics.json"
 zone_id = "417adb5cfe88a9c62145ba1f62ab5f69"
 
+# v0.50.0 — shields.io endpoint-badge routes. Anyone can drop a live
+# badge into a README/site via:
+#   https://img.shields.io/endpoint?url=https://forge.atomadic.tech/badge/lean_theorems
+[[routes]]
+pattern = "forge.atomadic.tech/badge/*"
+zone_id = "417adb5cfe88a9c62145ba1f62ab5f69"
+
 [vars]
 # Set GITHUB_TOKEN as a secret (wrangler secret put GITHUB_TOKEN)
 # for higher GitHub API rate limits and private-repo access.
 # The worker functions without it (60 req/hour unauthed).
-FORGE_VERSION = "0.49.0"
+FORGE_VERSION = "0.50.0"

@@ -1,6 +1,6 @@
 /** Tier a4 — HTTP entry point: routes requests and applies CORS. */
 
-import { Env } from "../a0_qk_constants/types.ts";
+import { Env, JsonValue } from "../a0_qk_constants/types.ts";
 import { TOOLS, DELUXE_TOOLS_TOTAL } from "../a0_qk_constants/tools_catalog.ts";
 import { SERVER_NAME, SERVER_VERSION, JSONRPC, ERR_PARSE } from "../a0_qk_constants/tier_patterns.ts";
 import { handleMcpRequest } from "../a3_og_features/mcp_handler.ts";
@@ -12,6 +12,22 @@ function cors(): Record<string, string> {
     "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
   };
+}
+
+/** shields.io endpoint-badge response. The shape (schemaVersion, label,
+ * message, color) is the shields.io v1 contract — any value rendered
+ * verbatim into the badge image at img.shields.io. */
+function shieldsBadge(label: string, message: string, color: string): Response {
+  return Response.json(
+    { schemaVersion: 1, label, message, color, cacheSeconds: 300 },
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=300",
+        ...cors(),
+      },
+    },
+  );
 }
 
 export default {
@@ -131,6 +147,61 @@ export default {
           error: err instanceof Error ? err.message : String(err),
           schema_version: "atomadic-forge.metrics/v1",
         }, { status: 502, headers: cors() });
+      }
+    }
+
+    // v0.50.0 — shields.io endpoint badges. One JSON response per metric;
+    // anyone can drop a badge into their site or README via:
+    //   https://img.shields.io/endpoint?url=https://forge.atomadic.tech/badge/lean_theorems
+    // The badge JSON shape is the shields.io contract:
+    //   {schemaVersion:1, label, message, color}
+    if (url.pathname.startsWith("/badge/")) {
+      const metric = url.pathname.slice("/badge/".length);
+      try {
+        const upstream = await fetch(
+          "https://raw.githubusercontent.com/atomadictech/atomadic-forge/main/forge_metrics.json",
+          { cf: { cacheTtl: 300, cacheEverything: true } as RequestInitCfProperties },
+        );
+        if (!upstream.ok) {
+          return shieldsBadge(metric, "unavailable", "lightgrey");
+        }
+        const m = await upstream.json() as Record<string, JsonValue>;
+        const labelMap: Record<string, string> = {
+          mcp_tools:      "MCP tools",
+          mcp_actions:    "MCP actions",
+          cli_verbs:      "CLI verbs",
+          tests_passing:  "tests passing",
+          test_files:     "test files",
+          test_functions: "test functions",
+          source_files:   "source files",
+          source_lines:   "lines of code",
+          monadic_tiers:  "monadic tiers",
+          lean_theorems:  "Lean4 theorems",
+          package_version:"forge",
+        };
+        let value: string | number | undefined;
+        let color = "blue";
+        if (metric === "lean_theorems") {
+          const lt = m.lean_theorems as Record<string, JsonValue> | undefined;
+          value = lt && typeof lt.count === "number" ? lt.count : undefined;
+          color = "blueviolet";
+        } else if (metric === "package_version") {
+          value = m.package_version as string | undefined;
+          color = "brightgreen";
+        } else if (metric === "tests_passing") {
+          value = m.tests_passing as number | undefined;
+          color = "brightgreen";
+        } else {
+          value = m[metric] as string | number | undefined;
+        }
+        if (value === undefined || value === null) {
+          return shieldsBadge(labelMap[metric] ?? metric, "n/a", "lightgrey");
+        }
+        const label = labelMap[metric] ?? metric;
+        const message = metric === "package_version" ? `v${value}` : String(value);
+        return shieldsBadge(label, message, color);
+      } catch (err) {
+        return shieldsBadge(metric, "error", "red");
       }
     }
 

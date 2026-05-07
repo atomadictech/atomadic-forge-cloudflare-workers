@@ -15,6 +15,13 @@ on:
         description: "Version string to inline as worker_version (e.g. 0.14.0). Defaults to the tag name when triggered by a tag push."
         required: false
         default: ''
+  # v0.50.0 — listen for forge tag releases. The forge repo's
+  # publish-on-tag.yml fires this with client_payload.version so the
+  # worker auto-redeploys in lockstep with the PyPI release. Public
+  # surfaces (metrics.json proxy, badge endpoints, MCP endpoint, version
+  # banner) all stay in sync with the same version tag.
+  repository_dispatch:
+    types: [forge-released]
 
 jobs:
   deploy:
@@ -36,7 +43,9 @@ jobs:
           # Tag push:    refs/tags/v0.14.0    -> 0.14.0
           # Branch push: refs/heads/main      -> read from package.json (no rewrite)
           # Manual:      use input.version    -> use that
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            v="${{ github.event.client_payload.version }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             v="${GITHUB_REF_NAME#v}"
           elif [ -n "${{ inputs.version }}" ]; then
             v="${{ inputs.version }}"
