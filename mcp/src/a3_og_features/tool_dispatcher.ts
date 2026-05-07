@@ -34,10 +34,14 @@ const ACTION_TO_LEGACY: Record<string, Record<string, string>> = {
     context: "context_pack", compose: "compose_tools", policy: "load_policy",
     recipes: "recipes", generate: "plan", apply: "plan_apply",
     locate: "forge_locate", commit: "commit_compose",
+    scaffold: "tool_factory",
+  },
+  transmute: {
+    auto: "auto", cherry: "cherry", finalize: "finalize",
+  },
+  loop: {
     iterate: "iterate_start", resume: "iterate_continue",
     evolve: "evolve_start", evolve_step: "evolve_step",
-    auto: "auto", cherry: "cherry", finalize: "finalize",
-    scaffold: "tool_factory",
   },
   hive: {
     register: "hive_agent", list: "hive_agent", deactivate: "hive_agent",
@@ -60,7 +64,7 @@ function resolveDispatch(
 ): { canonical: string; args: Record<string, JsonValue> } | null {
   // Path 1: it's already a legacy handler name → use as-is.
   // (Detected by checking if it's NOT one of the 8 new tools.)
-  const NEW_TOOLS = new Set(["welcome", "explore", "audit", "plan", "hive", "wisdom", "nexus", "create"]);
+  const NEW_TOOLS = new Set(["welcome", "explore", "audit", "plan", "transmute", "loop", "hive", "wisdom", "nexus", "create"]);
   if (!NEW_TOOLS.has(name)) {
     // Either a true legacy name (recon, certify, ...) or unknown.
     // If LEGACY_ENDPOINT_MAP has it, resolve transitively.
@@ -130,10 +134,10 @@ export async function dispatchTool(
   if (name === "nexus") {
     return localOnlyRedirect("nexus");
   }
-  // explore/audit/plan/hive/wisdom with no resolved action:
+  // explore/audit/plan/transmute/loop/hive/wisdom with no resolved action:
   // the resolver mapped the action; if name is still one of these,
   // it means action was missing or unknown. Return localOnly with hint.
-  if (["explore", "audit", "plan", "hive", "wisdom"].includes(name)) {
+  if (["explore", "audit", "plan", "transmute", "loop", "hive", "wisdom"].includes(name)) {
     return {
       schema_version: `atomadic-forge.${name}/v1`,
       error: `${name} requires an 'action' parameter`,

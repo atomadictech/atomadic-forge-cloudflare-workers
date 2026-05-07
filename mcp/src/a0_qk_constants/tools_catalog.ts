@@ -8,8 +8,8 @@
  *  LEGACY_ENDPOINT_MAP — the dispatcher rewrites the call before routing.
  */
 
-/** Total tool count in the v0.47.0 surface. */
-export const DELUXE_TOOLS_TOTAL = 8;
+/** Total tool count in the v0.48.0 surface. */
+export const DELUXE_TOOLS_TOTAL = 10;
 
 /** Legacy endpoint -> new tool name + default action. Mirrors
  *  src/atomadic_forge/a3_og_features/surface_export.py LEGACY_ENDPOINT_MAP.
@@ -54,7 +54,7 @@ export const LEGACY_ENDPOINT_MAP: Record<string, { tool: string; action?: string
   manifest_diff:         { tool: "audit", action: "diff" },
   change_review:         { tool: "audit", action: "diff" },
   maintain:              { tool: "audit", action: "validate" },
-  // plan tool
+  // plan tool (v0.48.0: 9 actions; transmute/loop split out)
   plan_apply:            { tool: "plan", action: "apply" },
   auto_plan:             { tool: "plan", action: "generate" },
   adapt_plan:            { tool: "plan", action: "generate" },
@@ -63,16 +63,6 @@ export const LEGACY_ENDPOINT_MAP: Record<string, { tool: string; action?: string
   forge_locate:          { tool: "plan", action: "locate" },
   commit_compose:        { tool: "plan", action: "commit" },
   forge_util:            { tool: "plan", action: "locate" },
-  iterate:               { tool: "plan", action: "iterate" },
-  iterate_start:         { tool: "plan", action: "iterate" },
-  iterate_continue:      { tool: "plan", action: "resume" },
-  evolve:                { tool: "plan", action: "evolve" },
-  evolve_start:          { tool: "plan", action: "evolve" },
-  loop:                  { tool: "plan", action: "iterate" },
-  transmute:             { tool: "plan", action: "auto" },
-  auto:                  { tool: "plan", action: "auto" },
-  cherry:                { tool: "plan", action: "cherry" },
-  finalize:              { tool: "plan", action: "finalize" },
   context_pack:          { tool: "plan", action: "context" },
   workflow:              { tool: "plan", action: "compose" },
   compose_tools:         { tool: "plan", action: "compose" },
@@ -81,6 +71,18 @@ export const LEGACY_ENDPOINT_MAP: Record<string, { tool: string; action?: string
   list_recipes:          { tool: "plan", action: "recipes" },
   get_recipe:            { tool: "plan", action: "recipes" },
   tool_factory:          { tool: "plan", action: "scaffold" },
+  // transmute tool (v0.48.0: flagship pipeline restored standalone)
+  transmute:             { tool: "transmute", action: "auto" },
+  auto:                  { tool: "transmute", action: "auto" },
+  cherry:                { tool: "transmute", action: "cherry" },
+  finalize:              { tool: "transmute", action: "finalize" },
+  // loop tool (v0.48.0: LLM iteration restored standalone)
+  loop:                  { tool: "loop", action: "iterate" },
+  iterate:               { tool: "loop", action: "iterate" },
+  iterate_start:         { tool: "loop", action: "iterate" },
+  iterate_continue:      { tool: "loop", action: "resume" },
+  evolve:                { tool: "loop", action: "evolve" },
+  evolve_start:          { tool: "loop", action: "evolve" },
   // hive tool
   hive_agent:            { tool: "hive", action: "register" },
   hive_consensus:        { tool: "hive", action: "propose" },
@@ -172,11 +174,10 @@ export const TOOLS = [
   {
     name: "plan",
     description:
-      "Orient + plan + execute. action='context'/'compose'/'policy'/'recipes' " +
-      "for first-call orientation + workflow recipes; 'generate'/'apply'/" +
-      "'locate'/'commit' for refactor planning + dev utilities; " +
-      "'iterate'/'resume'/'evolve'/'evolve_step' for LLM loops; " +
-      "'auto'/'cherry'/'finalize' for the transmuter pipeline; " +
+      "Orient + plan + dev utilities (v0.48.0: 9 actions; transmute and loop " +
+      "split out as standalone tools). action='context'/'compose'/'policy'/" +
+      "'recipes' for first-call orientation + workflow recipes; 'generate'/" +
+      "'apply'/'locate'/'commit' for refactor planning + dev utilities; " +
       "'scaffold' for tool factory.",
     inputSchema: {
       type: "object",
@@ -184,15 +185,86 @@ export const TOOLS = [
         action: {
           type: "string",
           enum: ["context", "compose", "policy", "recipes",
-                  "generate", "apply", "locate", "commit",
-                  "iterate", "resume", "evolve", "evolve_step",
-                  "auto", "cherry", "finalize", "scaffold"],
+                  "generate", "apply", "locate", "commit", "scaffold"],
           default: "context",
         },
-        intent: { type: "string", description: "Goal/intent for compose, generate, iterate" },
+        intent: { type: "string", description: "Goal/intent for compose or generate" },
         plan_id: { type: "string", description: "Saved plan ID for action=apply" },
         name: { type: "string", description: "Recipe/tool name for recipes/scaffold" },
         repo: { type: "string", description: "GitHub repo URL or owner/repo" },
+      },
+    },
+  },
+
+  // ── transmute (v0.48.0 — flagship spaghetti->certified pipeline) ─────
+  {
+    name: "transmute",
+    description:
+      "FLAGSHIP spaghetti->certified pipeline. action='auto' (default): " +
+      "single-shot scout->cherry->assimilate->wire->certify->receipt. " +
+      "action='cherry': produce a surgical cherry-pick manifest (cherry.json). " +
+      "action='finalize': materialize an existing cherry.json into a package. " +
+      "No LLM invoked — pure deterministic absorption. (Local-only — install " +
+      "atomadic-forge locally to run.)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["auto", "cherry", "finalize"],
+          default: "auto",
+        },
+        target: { type: "string", description: "Source repo path to absorb from" },
+        output: { type: "string", description: "Output directory for the new package" },
+        package: { type: "string", description: "Importable name (Python identifier)" },
+        apply: { type: "boolean", default: false, description: "false=dry-run, true=write" },
+        on_conflict: {
+          type: "string",
+          enum: ["rename", "first", "last", "fail"],
+          default: "rename",
+        },
+        pick: { type: "array", items: { type: "string" } },
+        pick_all: { type: "boolean", default: false },
+        only_tier: { type: "string" },
+      },
+    },
+  },
+
+  // ── loop (v0.48.0 — LLM iteration loops restored standalone) ─────────
+  {
+    name: "loop",
+    description:
+      "LLM-driven iteration sessions. Forge has no embedded LLM — these " +
+      "actions return prompts you feed to your own LLM, then the response " +
+      "comes back here for the next round. action='iterate': scaffold and " +
+      "emit first prompt; returns session_id. action='resume': feed LLM " +
+      "response back to advance the session. action='evolve': start a " +
+      "recursive multi-round session (D_max=23). action='evolve_step': " +
+      "advance an active evolve round. (Local-only — install atomadic-forge " +
+      "locally to run.)",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["iterate", "resume", "evolve", "evolve_step"],
+          default: "iterate",
+        },
+        intent: { type: "string" },
+        output: { type: "string" },
+        package: { type: "string" },
+        seed_repos: { type: "array", items: { type: "string" } },
+        target_score: { type: "number", default: 75.0 },
+        max_iterations: { type: "integer", default: 5 },
+        language: {
+          type: "string",
+          enum: ["python", "javascript", "typescript"],
+          default: "python",
+        },
+        session_id: { type: "string" },
+        response: { type: "string" },
+        rounds: { type: "integer", default: 3, minimum: 1, maximum: 23 },
+        evolve_session_id: { type: "string" },
       },
     },
   },
